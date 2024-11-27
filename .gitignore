@@ -1,0 +1,8 @@
+__pycache__/
+.venv/
+opus_books_weights/
+2 - PYTHON - Tokenizer.ipynb
+documentation_en.json
+documentation_it.json
+Inference.ipynb
+documentation.ipynb
