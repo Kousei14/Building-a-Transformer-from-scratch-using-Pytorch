@@ -26,7 +26,7 @@ class LayerNormalization(nn.Module): # return: (batch, seq_len, hidden_size)
         # eps is to prevent dividing by zero or when std is very small
         # x is each value inside the tensor
         # return: (batch, seq_len, hidden_size)
-        return self.alpha * (x - mean) / (std + self.eps) + self.bias # form ula for normalization
+        return self.alpha * (x - mean) / (std + self.eps) + self.bias # formula for normalization
 
 class FeedForwardBlock(nn.Module): # return: (batch, seq_len, d_model)
 
