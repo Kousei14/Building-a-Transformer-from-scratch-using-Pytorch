@@ -304,19 +304,19 @@ def train_model(config):
             encoder_mask = batch['encoder_mask'].to(device) # (batch, 1, 1, seq_len)
             decoder_mask = batch['decoder_mask'].to(device) # (batch, 1, seq_len, seq_len)
 
-            # 11.1 - Run the tensors through the encode, decode and the project function of the Transformer class
+            # PREP - Run the tensors through the encode, decode and the project function of the Transformer class
             encoder_output = model.encode(encoder_input, encoder_mask) # (batch, seq_len, d_model)
             decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask) # (batch, seq_len, d_model)
-            proj_output = model.project(decoder_output) # (batch, seq_len, vocab_size)
+            
+            # 11.1 - Forward Pass
+            proj_output = model.project(decoder_output) # (batch, seq_len, vocab_size) -> y_pred
+            label = batch['label'].to(device) # (batch, seq_len) -> y_true
 
-            # 11.2 - Compare the output with the label
-            label = batch['label'].to(device) # (batch, seq_len)
-
-            # 11.3 - Compute the loss using a simple cross entropy
+            # 11.2 - Compute loss (y_pred vs. y_true)
             loss = loss_fn(proj_output.view(-1, tokenizer_tgt.get_vocab_size()), label.view(-1))
             batch_iterator.set_postfix({"loss": f"{loss.item():6.3f}"})
 
-            # 11.4 - Log the loss (Visualized using SummaryWriter)
+            # 11.3 - Log the loss (Visualized using SummaryWriter)
             writer.add_scalar('train loss', loss.item(), global_step)
             writer.flush()
 
