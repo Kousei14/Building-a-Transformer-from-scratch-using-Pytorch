@@ -26,7 +26,6 @@ def translate(sentence: str):
                               d_model=config['d_model']).to(device)
 
     # 4. Load the pretrained weights (gets the last tmodel_{epoch}.pt)
-    
     model_filename = latest_weights_file_path(config)
     state = torch.load(model_filename, weights_only=True)
     model.load_state_dict(state['model_state_dict'])

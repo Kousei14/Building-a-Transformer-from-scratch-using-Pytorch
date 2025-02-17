@@ -37,6 +37,7 @@ def greedy_decode(model,
 
     # Precompute the encoder output and reuse it for every step
     encoder_output = model.encode(source, source_mask)
+
     # Initialize the decoder input with the sos token
     decoder_input = torch.empty(1, 1).fill_(sos_idx).type_as(source).to(device)
     while True:
@@ -90,15 +91,15 @@ def run_validation(model,
         console_width = 80
 
     with torch.no_grad():
-        for batch in validation_ds:
+        for batch in validation_ds: # batch_size = 1, to predict each sentence
             count += 1
             encoder_input = batch["encoder_input"].to(device) # (batch, seq_len)
             encoder_mask = batch["encoder_mask"].to(device) # (batch, 1, 1, seq_len)
 
             # check that the batch size is 1
-            assert encoder_input.size(
-                0) == 1, "Batch size must be 1 for validation"
+            assert encoder_input.size(0) == 1, "Batch size must be 1 for validation"
 
+            # Generating tokens (returns the text output of the model)
             model_out = greedy_decode(model, 
                                       encoder_input, 
                                       encoder_mask, 
@@ -127,19 +128,19 @@ def run_validation(model,
     
     if writer:
         # Evaluate the character error rate
-        # Compute the char error rate 
+        # --- Compute the char error rate 
         metric = torchmetrics.CharErrorRate()
         cer = metric(predicted, expected)
         writer.add_scalar('validation cer', cer, global_step)
         writer.flush()
 
-        # Compute the word error rate
+        # --- Compute the word error rate
         metric = torchmetrics.WordErrorRate()
         wer = metric(predicted, expected)
         writer.add_scalar('validation wer', wer, global_step)
         writer.flush()
 
-        # Compute the BLEU metric
+        # --- Compute the BLEU metric
         metric = torchmetrics.BLEUScore()
         bleu = metric(predicted, expected)
         writer.add_scalar('validation BLEU', bleu, global_step)
@@ -221,7 +222,7 @@ def get_ds(config): # RETURN: 2 Iterators (Dataset), 2 Tokenizers
     print(f'Max length of target sentence: {max_len_tgt}')
     
 
-    train_dataloader = DataLoader(train_ds, batch_size=config['batch_size'], shuffle=True) # RETURN:  Iterator. In this case, it splits our dataset into 10 batches
+    train_dataloader = DataLoader(train_ds, batch_size=config['batch_size'], shuffle=True) # RETURN:  Iterator. In this case, it splits our dataset into 8 sentences per batch
     val_dataloader = DataLoader(val_ds, batch_size=1, shuffle=True) # RETURN: Iterator. Only one batch for the validation set
 
     return train_dataloader, val_dataloader, tokenizer_src, tokenizer_tgt
@@ -329,7 +330,8 @@ def train_model(config):
 
             global_step += 1
 
-        # 12. run_validation() at the end of every epoch
+        # 12. run_validation() at the end of every epoch -> We have visibility of model predictions at every epoch
+        # for every version of model, we are running validation to see if the model is really learning more at every epoch step
         run_validation(model, 
                        val_dataloader, 
                        tokenizer_src, 
