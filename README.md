@@ -1,5 +1,4 @@
-This repository contains a full implementation of the **"Attention Is All You Need"** paper from scratch. The Transformer architecture is built entirely with custom code, without relying on high-level deep learning libraries for pre-built components.
-
+This repository contains a full implementation of the **"Attention Is All You Need"** paper from scratch. The Transformer architecture is built entirely with custom code.
 ## Overview
 - Complete implementation of the Transformer model from the original paper.
 - Custom-built layers, attention mechanisms, and training pipeline.
