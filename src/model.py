@@ -5,7 +5,7 @@ import math
 # Add & Norm
 class LayerNormalization(nn.Module): # return: (batch, seq_len, hidden_size)
 
-    def __init__(self, features: int, eps:float=10**-6) -> None:
+    def __init__(self, features: int, eps: float = 10**-6) -> None:
         super().__init__()
 
         # Define eps, alpha, and bias
@@ -34,9 +34,9 @@ class FeedForwardBlock(nn.Module): # return: (batch, seq_len, d_model)
         super().__init__()
 
         # Define Linear Layers 1, 2 and Dropout Layer
-        self.linear_1 = nn.Linear(in_features=d_model, out_features=d_ff) # w1 and b1
+        self.linear_1 = nn.Linear(in_features = d_model, out_features = d_ff) # w1 and b1
         self.dropout = nn.Dropout(dropout) # Regularization
-        self.linear_2 = nn.Linear(in_features=d_ff, out_features=d_model) # w2 and b2
+        self.linear_2 = nn.Linear(in_features = d_ff, out_features = d_model) # w2 and b2
 
     def forward(self, x):
         # (batch, seq_len, d_model) --> (batch, seq_len, d_ff) --> (batch, seq_len, d_model)
@@ -72,7 +72,7 @@ class PositionalEncoding(nn.Module):
 
         # Create a vector of shape (seq_len, 1)
         # e.g. [[1], [2], [3]], size is (3 tokens, 1 value)
-        position = torch.arange(0, seq_len, dtype=torch.float).unsqueeze(1) # (seq_len, 1)
+        position = torch.arange(0, seq_len, dtype = torch.float).unsqueeze(1) # (seq_len, 1)
 
         # Create a vector of shape (1, d_model // 2) -> 256
         # torch.arange(0, d_model, 2) -> [0.0, 2.0, 4.0,..., 510.0], 256 values inside the tensor
@@ -124,10 +124,10 @@ class MultiHeadAttentionBlock(nn.Module):
 
         # Define d_k, weights for q, k, v, o
         self.d_k = d_model // h # Dimension of vector seen by each head
-        self.w_q = nn.Linear(d_model, d_model, bias=False) # Wq
-        self.w_k = nn.Linear(d_model, d_model, bias=False) # Wk
-        self.w_v = nn.Linear(d_model, d_model, bias=False) # Wv
-        self.w_o = nn.Linear(d_model, d_model, bias=False) # Wo
+        self.w_q = nn.Linear(d_model, d_model, bias = False) # Wq
+        self.w_k = nn.Linear(d_model, d_model, bias = False) # Wk
+        self.w_v = nn.Linear(d_model, d_model, bias = False) # Wv
+        self.w_o = nn.Linear(d_model, d_model, bias = False) # Wo
 
         # Define Dropout
         self.dropout = nn.Dropout(dropout)
@@ -148,7 +148,7 @@ class MultiHeadAttentionBlock(nn.Module):
             # Write a very low value (indicating -inf) to the positions where mask == 0
             attention_scores.masked_fill_(mask == 0, -1e9)
 
-        attention_scores = attention_scores.softmax(dim=-1) # (batch, h, seq_len, seq_len) # Apply softmax
+        attention_scores = attention_scores.softmax(dim = -1) # (batch, h, seq_len, seq_len) # Apply softmax
 
         if dropout is not None:
             attention_scores = dropout(attention_scores) # apply dropout
@@ -305,11 +305,11 @@ def build_transformer(src_vocab_size: int,
                       tgt_vocab_size: int, 
                       src_seq_len: int, 
                       tgt_seq_len: int, 
-                      d_model: int=512, 
-                      N: int=6, 
-                      h: int=8, 
-                      dropout: float=0.1, 
-                      d_ff: int=2048) -> Transformer:
+                      d_model: int = 512, 
+                      N: int = 6, 
+                      h: int = 8, 
+                      dropout: float = 0.1, 
+                      d_ff: int = 2048) -> Transformer:
     
     # 1. Create the embedding layers
     src_embed = InputEmbeddings(d_model, src_vocab_size)

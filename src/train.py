@@ -1,28 +1,25 @@
-# import created classes
 from model import build_transformer
 from dataset import BilingualDataset, causal_mask
 from config import get_config, get_weights_file_path, latest_weights_file_path
 
-# standard imports
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
-from torch.optim.lr_scheduler import LambdaLR
+import torchmetrics
+from torch.utils.tensorboard import SummaryWriter
+# from torch.optim.lr_scheduler import LambdaLR
 
 import warnings
 from tqdm import tqdm
 import os
 from pathlib import Path
 
-# Huggingface datasets and tokenizers
 from datasets import load_dataset
+
 from tokenizers import Tokenizer
 from tokenizers.models import WordLevel
 from tokenizers.trainers import WordLevelTrainer
 from tokenizers.pre_tokenizers import Whitespace
-
-import torchmetrics
-from torch.utils.tensorboard import SummaryWriter
 
 def greedy_decode(model, 
                   source, 
@@ -32,31 +29,31 @@ def greedy_decode(model,
                   max_len, 
                   device):
     
+    # Tokenize [SOS] and [EOS]
     sos_idx = tokenizer_tgt.token_to_id('[SOS]')
     eos_idx = tokenizer_tgt.token_to_id('[EOS]')
 
-    # Precompute the encoder output and reuse it for every step
+    # Encode SENTENCE + MASK
     encoder_output = model.encode(source, source_mask)
 
-    # Initialize the decoder input with the sos token
+    # Initialize the DECODER INPUT with the [SOS] 
     decoder_input = torch.empty(1, 1).fill_(sos_idx).type_as(source).to(device)
     while True:
         if decoder_input.size(1) == max_len:
             break
-
-        # build mask for target
+        # Build mask for DECODER INPUT
         decoder_mask = causal_mask(decoder_input.size(1)).type_as(source_mask).to(device)
-
-        # calculate output
+        # Decode the [SOS] + MASK
         out = model.decode(encoder_output, source_mask, decoder_input, decoder_mask)
-
-        # get next token
+        # Project the NEXT TOKEN/ss
         prob = model.project(out[:, -1])
-        _, next_word = torch.max(prob, dim=1)
+        _, next_word = torch.max(prob, dim = 1)
+        # Augment the DECODER INPUT w/ the new tokens predicted
         decoder_input = torch.cat(
-            [decoder_input, torch.empty(1, 1).type_as(source).fill_(next_word.item()).to(device)], dim=1
+            [decoder_input, torch.empty(1, 1).type_as(source).fill_(next_word.item()).to(device)], 
+            dim = 1
         )
-
+        # Break if [EOS] is predicted already
         if next_word == eos_idx:
             break
 
@@ -72,7 +69,7 @@ def run_validation(model,
                    print_msg, 
                    global_step, 
                    writer, 
-                   num_examples=2):
+                   num_examples = 2):
     
     model.eval()
     count = 0
@@ -161,16 +158,18 @@ def get_or_build_tokenizer(config, ds, lang): # RETURN: Tokenizer
     # catch if the file is already created
     if not Path.exists(tokenizer_path):
         # WordLevel, Tokenizer
-        tokenizer = Tokenizer(WordLevel(unk_token="[UNK]"))
+        tokenizer = Tokenizer(WordLevel(unk_token = "[UNK]"))
 
         # Whitespace
         tokenizer.pre_tokenizer = Whitespace()
 
         # WordLevelTrainer
-        trainer = WordLevelTrainer(special_tokens=["[UNK]", "[PAD]", "[SOS]", "[EOS]"], min_frequency=2)
+        trainer = WordLevelTrainer(special_tokens = ["[UNK]", "[PAD]", "[SOS]", "[EOS]"], 
+                                   min_frequency = 2)
 
         # fit()
-        tokenizer.train_from_iterator(get_all_sentences(ds, lang), trainer=trainer)
+        tokenizer.train_from_iterator(get_all_sentences(ds, lang), 
+                                      trainer = trainer)
 
         # save
         tokenizer.save(str(tokenizer_path))
@@ -182,7 +181,9 @@ def get_ds(config): # RETURN: 2 Iterators (Dataset), 2 Tokenizers
     # It only has the train split, so we divide it overselves
     # ds_raw = load_dataset(f"{config['datasource']}", f"{config['lang_src']}-{config['lang_tgt']}", split='train')
     # I downloaded the dataset using google colab. I loaded the train.json file after
-    ds_raw = load_dataset('json', data_files='train.json', split='train')
+    ds_raw = load_dataset('json', 
+                          data_files = 'dataset/train.json', 
+                          split = 'train')
 
     # Build tokenizers
     tokenizer_src = get_or_build_tokenizer(config, ds_raw, config['lang_src']) # creates the tokenizer_en.json, returns a tokenizer that will tokenize incoming texts
@@ -222,8 +223,16 @@ def get_ds(config): # RETURN: 2 Iterators (Dataset), 2 Tokenizers
     print(f'Max length of target sentence: {max_len_tgt}')
     
 
-    train_dataloader = DataLoader(train_ds, batch_size=config['batch_size'], shuffle=True) # RETURN:  Iterator. In this case, it splits our dataset into 8 sentences per batch
-    val_dataloader = DataLoader(val_ds, batch_size=1, shuffle=True) # RETURN: Iterator. Only one batch for the validation set
+    train_dataloader = DataLoader(
+        train_ds, 
+        batch_size = config['batch_size'], 
+        shuffle = True
+        ) # RETURN:  Iterator. In this case, it splits our dataset into 8 sentences per batch
+    val_dataloader = DataLoader(
+        val_ds, 
+        batch_size = 1, 
+        shuffle = True
+        ) # RETURN: Iterator. Only one batch for the validation set
 
     return train_dataloader, val_dataloader, tokenizer_src, tokenizer_tgt
 
@@ -237,47 +246,20 @@ def get_model(config, vocab_src_len, vocab_tgt_len):
 
 def train_model(config):
 
-    # 1. Define the device
-    device = "cuda" if torch.cuda.is_available() else "mps" if torch.has_mps or torch.backends.mps.is_available() else "cpu"
-    print("Using device:", device)
+    # Supplementary - Make sure the weights folder exists (opus_books_weights)
+    Path(f"{config['datasource']}_{config['model_folder']}").mkdir(parents = True, exist_ok = True)
 
-    # 2. Configures the device being used
-    if (device == 'cuda'):
-        print(f"Device name: {torch.cuda.get_device_name(device.index)}")
-        print(f"Device memory: {torch.cuda.get_device_properties(device.index).total_memory / 1024 ** 3} GB")
-    elif (device == 'mps'):
-        print(f"Device name: <mps>")
-    else:
-        print("NOTE: If you have a GPU, consider using it for training.")
-    
-    # 3. Sets the device 
-    device = torch.device(device)
-
-    # 4. Make sure the weights folder exists (opus_books_weights)
-    Path(f"{config['datasource']}_{config['model_folder']}").mkdir(parents=True, exist_ok=True)
-
-    # 5. get_ds() - Loads the 2 datasets and the 2 tokenizers
+    # get_ds() - Loads the 2 DATASETS and the 2 TOKENIZERS
     train_dataloader, val_dataloader, tokenizer_src, tokenizer_tgt = get_ds(config)
 
-    # 6. get_model() - Loads the transformer model
+    # get_model() - Loads the TRANSFORMER MODEL
     model = get_model(config, 
                       tokenizer_src.get_vocab_size(), 
                       tokenizer_tgt.get_vocab_size()).to(device)
-
-    # MISC: Allows us to visualize realtime the training process (runs/tmodel)
-    writer = SummaryWriter(config['experiment_name'])
-
-    # 7. Optimizer
-    optimizer = torch.optim.Adam(model.parameters(), lr=config['lr'], eps=1e-9)
-
-    # 8. Set hyperparameters
-    initial_epoch = 0
-    global_step = 0
+    
+    # get_latest_weights_file_path() / latest_weight_file_path() - Loads PRE-TRAINED WEIGHTS (if it exists)
     preload = config['preload']
-
-    # 9.1 Get the latest filename of the model
     model_filename = latest_weights_file_path(config) if preload == 'latest' else get_weights_file_path(config, preload) if preload else None
-    # 9.2 - If model file already exists, we just load it
     if model_filename:
         print(f'Preloading model {model_filename}')
         state = torch.load(model_filename)
@@ -288,50 +270,89 @@ def train_model(config):
     else:
         print('No model to preload, starting from scratch')
 
-    # 10. Loss Function - Loads the loss function. Ignores the numbers equal to the index of the [PAD] token
-    loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer_src.token_to_id('[PAD]'), 
-                                  label_smoothing=0.1).to(device)
+    # Choose OPTIMIZER
+    optimizer = torch.optim.Adam(model.parameters(), lr = config['lr'], eps = 1e-9)
 
-    # 11. Training Proper
+    # Choose LOSS FUNCTION
+    loss_fn = nn.CrossEntropyLoss(ignore_index = tokenizer_src.token_to_id('[PAD]'), 
+                                  label_smoothing = 0.1).to(device)
+
+    # Choose DEVICE
+    device = "cuda" if torch.cuda.is_available() else "mps" if torch.has_mps or torch.backends.mps.is_available() else "cpu"
+    print("Using device:", device)
+
+    if (device == 'cuda'):
+        print(f"Device name: {torch.cuda.get_device_name(device.index)}")
+        print(f"Device memory: {torch.cuda.get_device_properties(device.index).total_memory / 1024 ** 3} GB")
+    elif (device == 'mps'):
+        print(f"Device name: <mps>")
+    else:
+        print("NOTE: If you have a GPU, consider using it for training.")
+
+    device = torch.device(device)
+    
+    # Create BACKPROPAGATION BLOCK (Forward Pass, Compute Loss, Backward Pass)
+    initial_epoch = 0
+    global_step = 0
+
     for epoch in range(initial_epoch, config['num_epochs']):
+
+        # Supplemental - Presets
         torch.cuda.empty_cache()
         model.train()
-        batch_iterator = tqdm(train_dataloader, 
-                              desc=f"Processing Epoch {epoch:02d}") # tqdm allows us to display progess to our iterable dataset
 
-        for batch in batch_iterator: # each sentence in the batch_iterator
+        # Supplemental - Loading bar
+        batch_iterator = tqdm(train_dataloader, 
+                              desc = f"Processing Epoch {epoch:02d}") # tqdm allows us to display progess to our iterable dataset
+
+        # Supplemental - Initialize TensorBoard SummaryWriter
+        writer = SummaryWriter(config['experiment_name'])
+
+        for batch in batch_iterator: # For each SENTENCE in the batch_iterator
             encoder_input = batch['encoder_input'].to(device) # (batch, seq_len)
             decoder_input = batch['decoder_input'].to(device) # (batch, seq_len)
             encoder_mask = batch['encoder_mask'].to(device) # (batch, 1, 1, seq_len)
             decoder_mask = batch['decoder_mask'].to(device) # (batch, 1, seq_len, seq_len)
 
-            # PREP - Run the tensors through the encode, decode and the project function of the Transformer class
+            # ENCODE each SOURCE and DECODE each TARGET
             encoder_output = model.encode(encoder_input, encoder_mask) # (batch, seq_len, d_model)
             decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask) # (batch, seq_len, d_model)
             
-            # 11.1 - Forward Pass
+            # 1. Forward Pass
             proj_output = model.project(decoder_output) # (batch, seq_len, vocab_size) -> y_pred
             label = batch['label'].to(device) # (batch, seq_len) -> y_true
 
-            # 11.2 - Compute loss (y_pred vs. y_true)
+            # 2. Compute Loss
             loss = loss_fn(proj_output.view(-1, tokenizer_tgt.get_vocab_size()), label.view(-1))
+
+            # Supplemental - Update Loading bar with loss
             batch_iterator.set_postfix({"loss": f"{loss.item():6.3f}"})
 
-            # 11.3 - Log the loss (Visualized using SummaryWriter)
+            # 3. Backward pass
+            optimizer.zero_grad(set_to_none = True)  # Clear previous gradients
+            loss.backward()  # Compute new gradients
+            optimizer.step()  # Update weights
+
+            # Supplemental - Log the loss to TensorBoard
             writer.add_scalar('train loss', loss.item(), global_step)
             writer.flush()
 
-            # 11.5 - Backpropagate the loss
-            loss.backward()
-
-            # 11.6 - Update the weights
-            optimizer.step()
-            optimizer.zero_grad(set_to_none=True)
-
             global_step += 1
 
-        # 12. run_validation() at the end of every epoch -> We have visibility of model predictions at every epoch
-        # for every version of model, we are running validation to see if the model is really learning more at every epoch step
+        # Save the MODEL at the end of EVERY EPOCH (we'll have 20 model files in our folder)
+        model_filename = get_weights_file_path(config, f"{epoch:02d}") # ./opus_books_weights/tmodel_{epoch}.pt
+        torch.save(
+            {
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'global_step': global_step
+            }, 
+            model_filename
+            )
+        print(f"Model saved to {model_filename}")
+        
+        # run_validation() - at the end of every epoch -> We have visibility of model predictions at every epoch
         run_validation(model, 
                        val_dataloader, 
                        tokenizer_src, 
@@ -340,15 +361,6 @@ def train_model(config):
                        device, lambda msg: batch_iterator.write(msg), 
                        global_step, 
                        writer)
-
-        # 13. Save the model at the end of every epoch (we'll have 20 model files in our folder)
-        model_filename = get_weights_file_path(config, f"{epoch:02d}") # ./opus_books_weights/tmodel_{epoch}.pt
-        torch.save({
-            'epoch': epoch,
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'global_step': global_step
-        }, model_filename)
 
 
 if __name__ == '__main__':

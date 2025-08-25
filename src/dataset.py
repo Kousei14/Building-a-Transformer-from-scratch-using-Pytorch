@@ -1,12 +1,15 @@
 import torch
-import torch.nn as nn
 from torch.utils.data import Dataset
 
 class BilingualDataset(Dataset):
 
-    def __init__(self, ds, tokenizer_src, tokenizer_tgt, 
-                           src_lang, tgt_lang, 
-                           seq_len):
+    def __init__(self, 
+                 ds, 
+                 tokenizer_src, 
+                 tokenizer_tgt, 
+                 src_lang, 
+                 tgt_lang, 
+                 seq_len):
         super().__init__()
 
         # seq_len: 350
@@ -24,9 +27,9 @@ class BilingualDataset(Dataset):
         self.tgt_lang = tgt_lang
 
         # special tokens. RETURN: int(index of the special tokens in the vocab). e.g. for SOS = idx 2, EOS = idx 3, PAD = idx 1
-        self.sos_token = torch.tensor([tokenizer_tgt.token_to_id("[SOS]")], dtype=torch.int64) # start of sentence token
-        self.eos_token = torch.tensor([tokenizer_tgt.token_to_id("[EOS]")], dtype=torch.int64) # end of sentence token
-        self.pad_token = torch.tensor([tokenizer_tgt.token_to_id("[PAD]")], dtype=torch.int64) # pad token
+        self.sos_token = torch.tensor([tokenizer_tgt.token_to_id("[SOS]")], dtype = torch.int64) # start of sentence token
+        self.eos_token = torch.tensor([tokenizer_tgt.token_to_id("[EOS]")], dtype = torch.int64) # end of sentence token
+        self.pad_token = torch.tensor([tokenizer_tgt.token_to_id("[PAD]")], dtype = torch.int64) # pad token
 
     def __len__(self): # RETURN: the length of train or validation ds
         return len(self.ds)
@@ -62,29 +65,29 @@ class BilingualDataset(Dataset):
                 self.sos_token,
                 torch.tensor(enc_input_tokens, dtype=torch.int64),
                 self.eos_token,
-                torch.tensor([self.pad_token] * enc_num_padding_tokens, dtype=torch.int64),
+                torch.tensor([self.pad_token] * enc_num_padding_tokens, dtype = torch.int64),
             ],
-            dim=0,
+            dim = 0,
         ) 
 
         # Add only <SOS> token
         decoder_input = torch.cat(
             [
                 self.sos_token,
-                torch.tensor(dec_input_tokens, dtype=torch.int64),
-                torch.tensor([self.pad_token] * dec_num_padding_tokens, dtype=torch.int64),
+                torch.tensor(dec_input_tokens, dtype = torch.int64),
+                torch.tensor([self.pad_token] * dec_num_padding_tokens, dtype = torch.int64),
             ],
-            dim=0,
+            dim = 0,
         )
 
         # Add only <EOS> token, uses the decoder list of indeces
         label = torch.cat(
             [
-                torch.tensor(dec_input_tokens, dtype=torch.int64),
+                torch.tensor(dec_input_tokens, dtype = torch.int64),
                 self.eos_token,
-                torch.tensor([self.pad_token] * dec_num_padding_tokens, dtype=torch.int64),
+                torch.tensor([self.pad_token] * dec_num_padding_tokens, dtype = torch.int64),
             ],
-            dim=0,
+            dim = 0,
         )
 
         # Double check the size of all the tensors (encoder and decoder input, label) to make sure they are all seq_len long
