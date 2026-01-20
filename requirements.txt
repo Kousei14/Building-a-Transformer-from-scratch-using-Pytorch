@@ -6,7 +6,7 @@ torchaudio==2.0.2
 torchtext==0.15.2
 torchmetrics==1.0.3
 
-datasets==2.15.0
+datasets==2.16.0
 
 tokenizers==0.13.3
 
